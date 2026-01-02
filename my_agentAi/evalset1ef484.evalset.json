@@ -1,0 +1,39 @@
+{
+  "eval_set_id": "evalset1ef484",
+  "name": "evalset1ef484",
+  "eval_cases": [
+    {
+      "eval_id": "case0f5474",
+      "conversation": [
+        {
+          "invocation_id": "e-9b376802-b011-4482-8390-d9fbd65d4e26",
+          "user_content": {
+            "parts": [
+              {
+                "text": "hello"
+              }
+            ],
+            "role": "user"
+          },
+          "intermediate_data": {},
+          "creation_timestamp": 1767196793.699386
+        }
+      ],
+      "session_input": {
+        "app_name": "my_agentAi",
+        "user_id": "user",
+        "state": {
+          "user_request": "",
+          "chef_output": "",
+          "menu_output": "",
+          "reservation_output": "",
+          "delivery_output": "",
+          "current_time": "",
+          "terrace_info": ""
+        }
+      },
+      "creation_timestamp": 1767196969.2841816
+    }
+  ],
+  "creation_timestamp": 1767196958.231197
+}
