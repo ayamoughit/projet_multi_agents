@@ -1,231 +1,296 @@
-# 🍽️ Restaurant Multi-Agents avec ADK
+# Système Multi-Agents pour Restaurant - "Le Gourmet Digital"
 
-Système multi-agents intelligent pour la gestion d'un restaurant, développé avec Google ADK (Agent Development Kit).
+## Description du Projet
 
-## 📋 Description
+Ce projet est un **système de chatbot intelligent multi-agents** développé avec **Google ADK (Agent Development Kit)** pour gérer un restaurant virtuel appelé **"Le Gourmet Digital"**.
 
-Ce projet implémente un système de chatbot multi-agents pour un restaurant virtuel "Le Gourmet Digital". Il utilise une architecture séquentielle avec des agents spécialisés qui collaborent pour gérer différentes fonctionnalités : menu, réservations, livraisons, et support client.
+Au lieu d'avoir un seul chatbot qui fait tout, le système utilise **plusieurs agents spécialisés** qui collaborent ensemble pour offrir une expérience client complète : de la consultation du menu jusqu'à la livraison, en passant par les réservations et le support client.
 
-**Caractéristiques principales** :
-- 🤖 **Architecture Sequential Agent** - Pipeline orchestré de 5 agents spécialisés
-- 🌤️ **API Météo Réelle** - Intégration avec OpenWeatherMap
-- 💾 **Système de Mémoire 3 Niveaux** - App Memory, User Memory, Session Memory
-- 🛡️ **Callbacks de Sécurité** - Blocage terrasse, secrets, détection allergies
-- 🛒 **Panier Intelligent** - Suivi dynamique des commandes en session
+## Fonctionnalités Principales
 
-## 🏗️ Architecture
-
-```
-root_agent (Réceptionniste)
-├── Restaurant_Pipeline (SequentialAgent)
-│   ├── menu_agent (Présentation carte)
-│   ├── chef_agent (Recommandations)
-│   ├── reservation_agent (Réservations + Météo)
-│   ├── delivery_agent (Livraison)
-│   └── support_agent (Support client)
-└── feedback_agent (Avis clients - MODEL_TINY)
-```
-
-### Agents Spécialisés
-
-| Agent | Rôle | Tools | Modèle |
-|-------|------|-------|--------|
-| **menu_agent** | Présente la carte et gère les commandes | Aucun | Qwen 2.5:7B |
-| **chef_agent** | Conseils culinaires et allergènes | Aucun | Qwen 2.5:7B |
-| **reservation_agent** | Réservations de tables | `get_weather`, `check_table_availability` | Qwen 2.5:7B |
-| **delivery_agent** | Gestion livraisons | `validate_phone_number`, `calculate_total_bill` | Qwen 2.5:7B |
-| **support_agent** | Support client général | Aucun | Qwen 2.5:7B |
-| **feedback_agent** | Analyse des avis clients | `save_feedback` | Llama 3.2:1B |
-
-## 🚀 Installation
-
-### Prérequis
-
-- Python 3.10+
-- [Ollama](https://ollama.ai/) installé
-- Modèles Ollama téléchargés :
-  ```bash
-  ollama pull qwen2.5:7b-instruct
-  ollama pull llama3.2:1b
-  ```
-
-### Dépendances Python
-
-```bash
-pip install google-adk requests python-dotenv
-```
-
-### Configuration
-
-1. **Cloner le projet**
-   ```bash
-   cd my_agentAi
-   ```
-
-2. **Créer le fichier `.env`**
-   ```bash
-   touch .env
-   ```
-
-3. **Ajouter la clé API OpenWeatherMap**
-   ```env
-   OpenWeather_API=votre_clé_api_ici
-   ```
-   
-   > 💡 Obtenez une clé gratuite sur [OpenWeatherMap](https://openweathermap.org/api)
-
-## 🎯 Utilisation
-
-### Lancer l'application
-
-```bash
-adk web .
-```
-
-L'interface ADK Web s'ouvrira sur `http://127.0.0.1:8000`
-
-### Exemples de Conversations
-
-#### 1️⃣ Commander un Repas
-```
-User: "Bonjour, je voudrais voir le menu s'il vous plaît"
-→ menu_agent présente la carte
-
-User: "Je vais prendre le Burger du Chef"
-→ Ajouté au panier (Session Memory)
-
-User: "Et une salade aussi"
-→ Panier : [Burger du Chef, Salade Océane]
-```
-
-#### 2️⃣ Réserver une Table
-```
-User: "Je voudrais réserver une table pour 4 personnes ce soir"
-→ reservation_agent traite la demande
-
-User: "Quelle est la météo à Paris ?"
-→ Appel API OpenWeatherMap
-→ "Current weather in Paris: clear sky, 18.5°C"
-```
-
-#### 3️⃣ Allergies (User Memory)
-```
-User: "J'ai une allergie aux noix"
-→ Enregistré dans User Memory
-→ Agent vous préviendra pour la "Salade Océane (Contient des Noix)"
-```
-
-#### 4️⃣ Sécurité - Terrasse Bloquée
-```
-User: "Je veux réserver la terrasse"
-→ Callback sécurité : "⛔ Désolé, la terrasse est fermée."
-```
-
-## 💾 Système de Mémoire
-
-### App Memory (Globale)
-Données partagées par tous les utilisateurs :
-- Nom du restaurant
-- Menu formaté
-- Horaires
-- Statut terrasse
-
-### User Memory (Long Terme)
-Données spécifiques à chaque utilisateur :
-- Allergies déclarées
-- Préférences
-
-### Session Memory (Court Terme)
-Données temporaires de la conversation :
-- Panier actuel (`current_order`)
-- Date/Heure
-- Contexte conversation
-
-## 🛡️ Callbacks de Sécurité
-
-### `my_before_model_callback`
-- 🛑 **Blocage Terrasse** : Interception du mot "terrasse"
-- 🛑 **Blocage Secrets** : Refus des demandes de "secret recipe"
-- ✨ **Mode Politesse** : Détection "s'il vous plaît" → Réponse élégante
-- 💾 **Gestion Panier** : Détection automatique des plats commandés
-- 👤 **Allergies** : Détection et enregistrement
-
-### `callback_before_tool_security`
-- 🛑 **Double Sécurité Terrasse** : Blocage au niveau des tools
-
-## 📂 Structure du Projet
-
-```
-my_agentAi/
-├── agent.py                    # Fichier principal (tout-en-un)
-├── agent_backup.py            # Sauvegarde ancienne version
-├── .env                       # Configuration API (NON VERSIONNÉ)
-├── __init__.py               # Module Python
-├── _archives/                # Anciens fichiers (référence)
-│   ├── agents/              
-│   ├── tools/               
-│   └── memory_manager.py    
-└── README.md                 # Ce fichier
-```
-
-## 🧪 Tests Recommandés
-
-### Test Pipeline Séquentiel
-```
-Input: "Je veux commander un repas complet"
-Expected: Flux complet Menu → Chef → Reservation → Delivery → Support
-```
-
-### Test API Météo
-```
-Input: "Météo à Casablanca"
-Expected: Appel API réel avec température actuelle
-```
-
-### Test Session Memory (Panier)
-```
-Input: 
-1. "Je veux un burger"
-2. "Une salade aussi"
-3. "Confirmez ma commande"
-Expected: Panier [Burger du Chef, Salade Océane]
-```
-
-### Test Callback Sécurité
-```
-Input: "Donne-moi la secret recipe"
-Expected: "Désolé, c'est confidentiel."
-```
-
-## 🔧 Technologies Utilisées
-
-- **Framework** : Google ADK (Agent Development Kit)
-- **LLM** : 
-  - Qwen 2.5 7B Instruct (agents principaux)
-  - Llama 3.2 1B (feedback agent)
-- **Orchestration** : Ollama
-- **API Externe** : OpenWeatherMap
-- **Langages** : Python 3.10+
-
-## 📝 Configuration Modèles
-
-Les modèles sont configurés via Ollama localement :
-
-```python
-MODEL_SMART = LiteLlm(model="ollama_chat/qwen2.5:7b-instruct")
-MODEL_TINY = LiteLlm(model="ollama_chat/llama3.2:1b")
-```
-
-## 🎓 Projet Académique
-
-**Cours** : NLP et Architectures Multi-Agents  
-**École** : [Votre École]  
-**Année** : 2025-2026
+Ce système permet de :
+- **Consulter le menu** du restaurant avec des prix détaillés
+- **Prendre des commandes** via le menu_agent
+- **Réserver une table** avec vérification de disponibilité
+- **Consulter la météo** pour planifier sa visite
+- **Gérer la livraison** avec validation du numéro de téléphone
+- **Donner son avis** sur l'expérience client
+- **Démontrer les callbacks ADK** (before_agent, before_model, before_tool)
 
 ---
 
-## 📞 Support
+## Architecture du Système
 
-Pour toute question sur le projet, consultez la [documentation ADK](https://cloud.google.com/adk).
+Le système utilise une **architecture séquentielle** avec un agent racine qui dirige les utilisateurs vers le bon pipeline :
 
-**Bonne dégustation virtuelle ! 🍽️✨**
+![Architecture Séquentielle](./Screens/shema%20s%C3%A9quentielle.png)
+
+### Flux de traitement
+
+```
+Client
+  ↓
+  > root_agent (Réceptionniste)
+        ↓
+        > Restaurant_Pipeline (Agent Séquentiel)
+              1. menu_agent         → Présente le menu
+              2. chef_agent         → Conseils culinaires
+              3. reservation_agent  → Réservations + Météo
+              4. delivery_agent     → Livraison
+              5. support_agent      → Support client
+        ↓
+        > feedback_agent → Collecte des avis
+```
+
+### Agents du Système
+
+| Agent | Rôle | Outils Disponibles | Modèle IA |
+|-------|------|-------------------|-----------|
+| **root_agent** | Réceptionniste - Dirige vers le bon service | Aucun | Qwen 2.5 7B |
+| **menu_agent** | Présente la carte et prend les commandes | Aucun | Qwen 2.5 7B |
+| **chef_agent** | Donne des conseils culinaires | Aucun | Qwen 2.5 7B |
+| **reservation_agent** | Gère les réservations de tables | `get_weather`, `check_table_availability` | Qwen 2.5 7B |
+| **delivery_agent** | Organise la livraison | `validate_phone_number`, `calculate_total_bill` | Qwen 2.5 7B |
+| **support_agent** | Support client général | Aucun | Llama 3.2 1B |
+| **feedback_agent** | Collecte et analyse les avis | `save_feedback` | Qwen 2.5 7B |
+
+---
+
+## Démonstration avec Screenshots
+
+### 1. Callbacks Before Agent
+
+Les **callbacks before agent** s'exécutent **avant** que l'agent ne traite la requête. Ils permettent de :
+- Logger l'entrée dans un agent
+- Bloquer l'exécution de l'agent selon des conditions
+- Inspecter l'état de la session
+
+![Callbacks Before Agent](./Screens/callbaks%20agents%20.png)
+
+**Ce qu'on voit :**
+- `[Callback] Entering agent: root_agent` → L'agent racine démarre
+- `Inv: e-557a5bd...` → Un ID unique d'invocation pour le traçage
+- L'heure exacte du démarrage
+- `State condition not met: Proceeding` → Pas de condition de blocage, l'agent continue
+
+---
+
+### 2. Callbacks Before Model (Menu Agent)
+
+Les **callbacks before model** s'exécutent **avant** l'appel au modèle IA. Ils permettent de :
+- Inspecter le message de l'utilisateur
+- Modifier les instructions système
+- Bloquer l'appel au modèle (ex: mot-clé "BLOCK")
+
+![Callbacks Before Model](./Screens/callbaks%20model%20menu%20.png)
+
+**Ce qu'on voit :**
+- `Before model call for agent: menu_agent` → Le menu_agent va appeler le modèle IA
+- `Inspecting last user message: 'bonjour'` → Le message utilisateur est analysé
+- `Proceeding with LLM call` → Aucun blocage, l'appel au modèle est autorisé
+
+---
+
+### 3. Callbacks Before Tool
+
+Les **callbacks before tool** s'exécutent **avant** l'utilisation d'un outil. Ils permettent de :
+- Voir quels arguments sont passés à l'outil
+- Modifier les arguments (ex: corriger une ville)
+- Bloquer l'utilisation de l'outil
+
+![Callbacks Before Tool](./Screens/callback%20tool.png)
+
+**Ce qu'on voit :**
+- `Before tool call for tool 'check_table_availability'` → L'outil de réservation va être appelé
+- `in agent 'reservation_agent'` → C'est l'agent de réservation qui l'utilise
+- `Original args: {'date': '2023-10-15', 'location': 'terrasse', 'people': 2}` → Les paramètres de la réservation
+- `Proceeding with original args` → Les arguments sont acceptés tels quels
+
+---
+
+### 4. Callbacks Before Tool - Outil Météo
+
+L'agent `reservation_agent` peut appeler l'**API OpenWeatherMap** pour donner la météo :
+
+![Tool Weather](./Screens/tool%20weather%20.png)
+
+**Ce qu'on voit :**
+- Le callback before tool s'exécute avant l'appel à `get_weather`
+- L'utilisateur demande : *"quelle est la météo ?"*
+- Le système appelle automatiquement l'outil `get_weather`
+- Réponse : *"Météo (Simulation) à Casablanca : Ensoleillé, 22°C"*
+
+> **Note** : Si vous ajoutez une vraie clé API dans `.env`, vous obtiendrez les données réelles !
+
+---
+
+### 5. Test de Feedback
+
+L'agent `feedback_agent` collecte et enregistre les avis clients :
+
+![Test Feedback](./Screens/test%20de%20feedback.png)
+
+**Flux du processus :**
+1. L'utilisateur signale qu'il veut donner un avis
+2. Le `root_agent` transfère vers `feedback_agent`
+3. Le `feedback_agent` pose des questions pour collecter l'avis
+4. L'avis est sauvegardé via l'outil `save_feedback`
+
+---
+
+### 6. Enregistrement de Feedback
+
+Détail de l'enregistrement des feedbacks dans la base de données :
+
+![Enregistrer Feedback](./Screens/enregistrer%20feedback.png)
+
+**Ce qu'on voit :**
+- L'agent demande : *"Bonjour, c'est le service qualité. Votre avis ?"*
+- L'utilisateur donne son avis
+- L'outil `save_feedback` est appelé pour enregistrer l'avis dans la base de données
+- Message de confirmation : *"Avis enregistré avec succès"*
+
+---
+
+### 7. Test d'Évaluation (Evalset)
+
+Les **evalsets** permettent de tester automatiquement le système avec des scénarios prédéfinis :
+
+![Test Eval](./Screens/test%20eval%20.png)
+
+**Ce qu'on voit :**
+- Des conversations tests sont lancées automatiquement
+- Le système vérifie que les agents répondent correctement
+- Les résultats montrent si les tests passent ou échouent
+
+---
+
+### 8. Affichage de la Mémoire dans le Terminal (Partie 1)
+
+Le système affiche en temps réel les informations stockées dans la mémoire durant la conversation :
+
+![Mémoire Terminal 1](./Screens/memoir%20.png)
+
+**Ce qu'on voit :**
+- Affichage détaillé de la **App Memory** (mémoire globale)
+- Informations sur le restaurant : menu, prix, horaires
+- Affichage de la **User Memory** (mémoire utilisateur)
+- Données personnalisées par utilisateur : allergies, préférences
+
+---
+
+### 9. Affichage de la Mémoire dans le Terminal (Partie 2)
+
+Suite de l'affichage des informations mémoire :
+
+![Mémoire Terminal 2](./Screens/memoir%202.png)
+
+**Ce qu'on voit :**
+- Affichage de la **Session Memory** (mémoire de session)
+- Panier actuel de l'utilisateur
+- Date et heure de la session
+- Contexte conversationnel temporaire
+
+---
+
+### 10. État de l'Agent et Mémoire Active
+
+Vue détaillée de l'état actuel de l'agent et de la mémoire en cours d'utilisation :
+
+![État Agent et Mémoire](./Screens/memoir%203.png)
+
+**Ce qu'on voit :**
+- L'agent actuel en cours d'exécution (`current_state`)
+- Les variables d'état : `burger_count` et `salade_count`
+- Informations de traçage et session ID
+- Communication entre l'utilisateur et l'agent Balade-Océane
+
+---
+
+## Système de Mémoire à 3 Niveaux
+
+### App Memory (Mémoire Globale)
+Partagée par **tous les utilisateurs** :
+- Nom du restaurant : "Le Gourmet Digital"
+- Menu complet avec prix
+- Horaires d'ouverture
+- Statut de la terrasse
+
+### User Memory (Mémoire Utilisateur)
+Spécifique à **chaque utilisateur** :
+- Allergies déclarées
+- Plats préférés
+- Historique de réservations
+
+### Session Memory (Mémoire de Session)
+Temporaire, pour la **conversation actuelle** :
+- Panier en cours
+- Date et heure
+- Contexte de la conversation
+
+---
+
+## Sécurité et Callbacks
+
+### 3 Types de Callbacks
+
+1. **`before_agent_callback`**
+   - S'exécute avant l'entrée dans un agent
+   - Exemple : Logger, bloquer un agent selon l'état
+
+2. **`before_model_callback`**
+   - S'exécute avant l'appel au modèle IA
+   - Exemple : Modifier les instructions, bloquer certains mots
+
+3. **`before_tool_callback`**
+   - S'exécute avant l'utilisation d'un outil
+   - Exemple : Valider/modifier les arguments, bloquer un outil
+
+### Règles de Sécurité Implémentées
+
+- **Terrasse bloquée** : Refus automatique des réservations en terrasse
+- **Secrets protégés** : Impossible de demander la recette secrte
+- **Allergies** : Détection et alerte automatique
+
+---
+
+## Exemples de Conversation
+
+### Scénario 1 : Commander un repas
+
+```
+→ User: "Bonjour, je voudrais voir le menu"
+← menu_agent: "Voici notre carte :
+   ENTRÉES: Salade César (12€), Soupe à l'oignon (10€)
+   PLATS: Burger du Chef (18€), Salade Océane (14€), Pâtes aux Truffes (22€)
+   DESSERTS: Tiramisu (8€), Crème Brûlée (9€)"
+
+→ User: "Je prends le Burger du Chef"
+← menu_agent: "Très bon choix ! Le Burger du Chef est noté. Autre chose ?"
+
+→ User: "Un Tiramisu aussi"
+← menu_agent: "Parfait ! Votre panier : Burger du Chef, Tiramisu"
+```
+
+### Scénario 2 : Réserver avec météo
+
+```
+→ User: "Je veux réserver une table pour 4 personnes"
+← reservation_agent: "Bien sûr ! Pour quelle date ?"
+
+→ User: "Ce soir à 20h. Au fait, quelle est la météo ?"
+← reservation_agent: [Appel API] "Météo actuelle : Ensoleillé, 22°C"
+```
+
+### Scénario 3 : Allergies
+
+```
+→ User: "J'ai une allergie aux noix"
+← system: [✓ Enregistré dans User Memory]
+
+→ User: "Je veux la Salade Océane"
+← menu_agent: "⚠ Attention ! La Salade Océane contient des noix."
+```
+
+---
+

@@ -18,129 +18,134 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 
 # ==========================================
-# 1. CONFIGURATION (MULTI-MODÈLES)
+# 1. CONFIGURATION
 # ==========================================
-# Modèle Puissant (Pour la logique, la mémoire, les outils)
 MODEL_SMART = LiteLlm(model="ollama_chat/qwen2.5:7b-instruct")
-
-# Modèle Léger (Pour les tâches simples - Exigence Prof)
 MODEL_TINY = LiteLlm(model="ollama_chat/llama3.2:1b")
 
 # ==========================================
 # 2. TOOLS (OUTILS)
 # ==========================================
 def get_weather(city: str) -> str:
-    """Récupère la météo via OpenWeatherMap ou simule si pas de clé."""
     api_key = os.getenv("OpenWeather_API")
-    
-    if not api_key:
-        return f"Météo (Simulation) à {city} : Ensoleillé, 22°C (Clé API manquante)."
-    
+    if not api_key: return f"Météo (Simulation) à {city} : Ensoleillé, 22°C."
     url = "https://api.openweathermap.org/data/2.5/weather"
     params = { "q": city, "appid": api_key, "units": "metric", "lang": "fr" }
-    
     try:
         response = requests.get(url, params=params, timeout=5)
         if response.status_code == 200:
             data = response.json()
-            desc = data["weather"][0]["description"]
-            temp = data["main"]["temp"]
-            return f"Météo actuelle à {city}: {desc}, {temp}°C."
-        else:
-            return f"Impossible de récupérer la météo pour {city} (Erreur API)."
-    except Exception as e:
-        return f"Erreur de connexion météo pour {city}: {str(e)}"
+            return f"Météo actuelle à {city}: {data['weather'][0]['description']}, {data['main']['temp']}°C."
+        return "Erreur API."
+    except Exception as e: return f"Erreur Connexion: {str(e)}"
 
 def save_feedback(avis: str, sentiment: str) -> str:
-    print(f"💾 [DB] Feedback saved: {avis} (Sentiment: {sentiment})")
+    print(f"💾 [DB] Feedback saved: {avis} (Sentiment: {sentiment})", flush=True)
     return "Avis enregistré avec succès."
 
 def check_table_availability(date: str, people: int, location: str = "salle") -> str:
     return f"Table OK pour {people} pers en {location} le {date}."
 
-def validate_phone_number(phone: str) -> str:
-    return f"Numéro {phone} validé."
-
-def calculate_total_bill(items: str) -> str:
-    return "Total: 42.50€."
+def validate_phone_number(phone: str) -> str: return f"Numéro {phone} validé."
+def calculate_total_bill(items: str) -> str: return "Total: 42.50€."
 
 # ==========================================
-# 3. CALLBACKS (MÉMOIRE & LOGS)
+# 3. CALLBACKS (VOTRE STRUCTURE + LOGIQUE MÉMOIRE)
 # ==========================================
 
 def callback_before_agent_log(callback_context: CallbackContext) -> Optional[types.Content]:
+    """Log simple (Pour les agents du pipeline)."""
     agent_name = callback_context.agent_name
     now = datetime.datetime.now()
     time_part = now.strftime("%H:%M")
-    print(f"\n[CALLBACK] 🚀 Agent '{agent_name}' actif à {time_part}")
+    print(f"\n[CALLBACK]  Agent '{agent_name}' actif à {time_part}", flush=True)
     return None
 
-# --- LE CERVEAU DU SYSTÈME (MÉMOIRE + INJECTION) ---
-def my_before_model_callback(
+def check_if_agent_should_run(callback_context: CallbackContext) -> Optional[types.Content]:
+    """Log détaillé (Pour le ROOT)."""
+    agent_name = callback_context.agent_name
+    invocation_id = callback_context.invocation_id
+    current_state = callback_context.state.to_dict()
+    now = datetime.datetime.now()
+    time_part = now.strftime("%H:%M")
+
+    print(f"\n[Callback] Entering agent: {agent_name} (Inv: {invocation_id}) à {time_part}", flush=True)
+
+    if current_state.get("skip_llm_agent", False):
+        print(f"[Callback] State condition 'skip_llm_agent=True' met: Skipping agent {agent_name}.", flush=True)
+        return types.Content(parts=[types.Part(text=f"Agent {agent_name} skipped.")], role="model")
+    else:
+        print(f"[Callback] State condition not met: Proceeding with agent {agent_name}.", flush=True)
+        return None
+
+def simple_before_model_modifier(
     callback_context: CallbackContext, llm_request: LlmRequest
 ) -> Optional[LlmResponse]:
-    """Gère la détection (Panier/Allergies) ET l'injection dans le Prompt."""
-    
+    """
+    LE CERVEAU : C'est ici que je mets la mémoire (Burger/Allergie) et le correctif Root.
+    """
     agent_name = callback_context.agent_name
-    
-    # 1. Récupération du message utilisateur
+    print(f"[Callback] Before model call for agent: {agent_name}", flush=True)
+
+    # 1. Lecture du message utilisateur
     last_user_message = ""
     if llm_request.contents and llm_request.contents[-1].role == 'user':
         if llm_request.contents[-1].parts:
-            part = llm_request.contents[-1].parts[0]
-            last_user_message = getattr(part, 'text', '') or ""
-            last_user_message = last_user_message.lower()
+            last_user_message = llm_request.contents[-1].parts[0].text
+            print(f"[Callback] Inspecting last user message: '{last_user_message}'", flush=True)
+            if last_user_message:
+                last_user_message = last_user_message.lower()
 
-    # 2. MISE À JOUR DU STATE (La mémoire)
-    
-    # Allergies
-    if "allergie" in last_user_message or "allergic" in last_user_message:
-        callback_context.state["user:allergies?"] = "⚠️ OUI (Noté dans le dossier client)"
-        print("💾 [Mémoire] Allergie notée.")
+    # 2. LOGIQUE MÉTIER (Mémoire)
+    if "allergie" in last_user_message:
+        callback_context.state["user:allergies?"] = " OUI (Noté)"
+        print("[Mémoire] Allergie notée.", flush=True)
 
-    # Panier (On remplit la liste)
+    # Panier (On remplit la liste avec les plats du menu)
     current_order = callback_context.state.get("current_order", [])
     added = False
     
-    # Logique simple de détection de mots-clés
-    if "burger" in last_user_message and "Burger du Chef" not in current_order:
-        current_order.append("Burger du Chef")
-        added = True
-    if "salade" in last_user_message and "Salade Océane" not in current_order:
-        current_order.append("Salade Océane")
-        added = True
-    if "pâtes" in last_user_message and "Pâtes aux Truffes" not in current_order:
-        current_order.append("Pâtes aux Truffes")
-        added = True
+    # Détection des plats
+    if "burger" in last_user_message and "Burger Maison" not in current_order:
+        current_order.append("Burger Maison"); added = True
+    if "saumon" in last_user_message and "Pavé de Saumon" not in current_order:
+        current_order.append("Pavé de Saumon"); added = True
+    if "risotto" in last_user_message and "Risotto" not in current_order:
+        current_order.append("Risotto aux Champignons"); added = True
+    if "salade" in last_user_message and "Salade César" not in current_order:
+        current_order.append("Salade César"); added = True
+    if "soupe" in last_user_message and "Soupe" not in current_order:
+        current_order.append("Soupe à l'oignon"); added = True
+    if "tiramisu" in last_user_message and "Tiramisu" not in current_order:
+        current_order.append("Tiramisu"); added = True
         
     if added:
         callback_context.state["current_order"] = current_order
-        print(f"🛒 [Mémoire] Panier mis à jour : {current_order}")
+        print(f" [Mémoire] Panier mis à jour : {current_order}", flush=True)
 
-    # 3. SÉCURITÉ
+    # Sécurité Terrasse
     if "terrasse" in last_user_message:
-        return LlmResponse(content=types.Content(role="model", parts=[types.Part(text="⛔ Désolé, la terrasse est fermée.")] ))
-    if "secret" in last_user_message and "recipe" in last_user_message:
-        return LlmResponse(content=types.Content(role="model", parts=[types.Part(text="Désolé, c'est confidentiel.")] ))
+        return LlmResponse(content=types.Content(role="model", parts=[types.Part(text=" Désolé, la terrasse est fermée.")] ))
 
-    # 4. INJECTION 
-    # On récupère les valeurs à jour
+    # FIX ROOT : Le Root met à jour la mémoire mais ne reçoit pas l'injection
+    if agent_name == "root_agent":
+        print(f"[Callback] Agent Root détecté : Pas d'injection (Transfert requis).", flush=True)
+        return None
+
+    # 3. INJECTION DU PROMPT (Pour les autres agents)
     actual_menu = callback_context.state.get("app:menu_text_formatted", "Menu non chargé")
     actual_order = callback_context.state.get("current_order", [])
     actual_allergies = callback_context.state.get("user:allergies?", "Aucune")
 
-    # On prépare le texte à injecter dans le cerveau de l'agent
     context_injection = f"""
-    [MÉMOIRE SYSTÈME VIVANTE]
+    [MÉMOIRE SYSTÈME]
     -------------------------
-    1. MENU RESTAURANT : {actual_menu}
-    2. PANIER CLIENT ACTUEL : {actual_order} 
-       (IMPORTANT : Si cette liste n'est pas vide, le client a DÉJÀ commandé ça. Confirme-le.)
-    3. ALLERGIES CLIENT : {actual_allergies}
+    1. MENU ACTUEL : {actual_menu}
+    2. PANIER CLIENT : {actual_order} (Si non vide, confirme l'ajout)
+    3. ALLERGIES : {actual_allergies}
     -------------------------
     """
 
-    # On l'ajoute à l'instruction système
     original_instruction = llm_request.config.system_instruction
     if not original_instruction:
          llm_request.config.system_instruction = types.Content(role="system", parts=[types.Part(text=context_injection)])
@@ -153,22 +158,33 @@ def my_before_model_callback(
         original_instruction.parts[0].text += f"\n\n{context_injection}"
         llm_request.config.system_instruction = original_instruction
 
-    print(f"🧠 [Injection] L'agent {agent_name} voit le panier : {actual_order}")
-
+    print(f"[Injection] Prompt mis à jour pour {agent_name}", flush=True)
     return None
 
-def callback_before_tool_security(
+def simple_before_tool_modifier(
     tool: BaseTool, args: Dict[str, Any], tool_context: ToolContext
 ) -> Optional[Dict]:
-    if tool.name == "check_table_availability":
-        location = args.get("location", "").lower()
-        if any(mot in location for mot in ["terrasse", "dehors", "extérieur"]):
-            print(f"\n[Security] Zone interdite : {location}")
+    """Inspects/modifies tool args or skips the tool call."""
+    agent_name = tool_context.agent_name
+    tool_name = tool.name
+    
+  
+    print(f"[Callback] Before tool call for tool '{tool_name}' in agent '{agent_name}'", flush=True)
+    print(f"[Callback] Original args: {args}", flush=True)
+
+    if tool_name == 'check_table_availability':
+        location = args.get('location', '').lower()
+        if any(mot in location for mot in ["terrasse", "dehors"]):
+            print("[Callback]  SÉCURITÉ : Terrasse demandée -> BLOQUÉ.", flush=True)
+            # On retourne un dictionnaire pour bloquer l'outil proprement
             return {"available": False, "reason": "Zone fermée."}
+
+    # VOS LOGS DE FIN (Je n'y touche pas)
+    print("[Callback] Proceeding with original or previously modified args.", flush=True)
     return None
 
 # ==========================================
-# 4. AGENTS
+# 4. AGENTS (VOTRE CONFIGURATION EXACTE)
 # ==========================================
 
 menu_agent = Agent(
@@ -176,15 +192,22 @@ menu_agent = Agent(
     model=MODEL_SMART,
     description="Prend la commande.",
     instruction="""
-    Tu es le serveur.
+    Tu es le serveur du restaurant 'Le Gourmet Digital'.
     
-    ⚡ RÈGLE IMPORTANTE :
-    Dès que tu reçois le client, regarde IMMÉDIATEMENT le [PANIER CLIENT ACTUEL] dans ta mémoire.
-    - Si le panier contient un plat (ex: Burger), dis : "Bonjour ! Je vois que vous avez choisi le [Nom du Plat]. C'est noté. Désirez-vous autre chose ?"
-    - Sinon, propose le menu.
+    TES INSTRUCTIONS :
+    1. Regarde le [PANIER CLIENT] et le [MENU] injectés.
+    2. Si le client demande le menu ou si le panier est VIDE : 
+       - Présente poliment les Entrées, Plats et Desserts disponibles.
+    
+    3. Si le client passe une commande (ex: "Je veux le Burger") :
+       - Vérifie que l'article est dans le menu.
+       - Confirme simplement l'ajout (ex: "Très bon choix, c'est noté.").
+       - Demande s'il désire autre chose.
+       
+    4. NE DIS PAS "Bonjour" si la conversation est déjà commencée.
     """,
-    before_agent_callback=[callback_before_agent_log],
-    before_model_callback=[my_before_model_callback] # ✅ Callback activé
+    before_agent_callback=[callback_before_agent_log], 
+    before_model_callback=[simple_before_model_modifier]
 )
 
 chef_agent = Agent(
@@ -197,10 +220,10 @@ chef_agent = Agent(
 reservation_agent = Agent(
     name="reservation_agent",
     model=MODEL_SMART,
-    instruction="Gère les réservations et la MÉTÉO (avec get_weather).",
+    instruction="Gère les réservations et la MÉTÉO.",
     tools=[check_table_availability, get_weather], 
     before_agent_callback=[callback_before_agent_log],
-    before_tool_callback=[callback_before_tool_security] 
+    before_tool_callback=[simple_before_tool_modifier] 
 )
 
 delivery_agent = Agent(
@@ -209,10 +232,9 @@ delivery_agent = Agent(
     instruction="Gère la livraison. Confirme le panier final et le total.",
     tools=[validate_phone_number, calculate_total_bill],
     before_agent_callback=[callback_before_agent_log],
-    before_model_callback=[my_before_model_callback] # ✅ Callback activé
+   
 )
 
-# ✅ Utilisation du Modèle TINY pour le support (Exigence Prof)
 support_agent = Agent(
     name="support_agent",
     model=MODEL_TINY, 
@@ -228,56 +250,48 @@ restaurant_pipeline = SequentialAgent(
     before_agent_callback=[callback_before_agent_log]
 )
 
-# ==========================================
-# 5. AGENT FEEDBACK
-# ==========================================
 feedback_agent = Agent(
     name="feedback_agent",
     model=MODEL_SMART,
-    instruction="""
-    Tu es l'agent de Feedback.
-    
-    PROTOCOLE :
-    1. Si le client ne parle pas, PRENDS L'INITIATIVE : Dis "Bonjour, c'est le service qualité. Votre avis ?"
-    2. ATTENDS la réponse.
-    3. ENSUITE utilise l'outil `save_feedback`.
-    """,
+    instruction="Dis : 'Bonjour, c'est le service qualité. Votre avis ?' Puis utilise `save_feedback`.",
     tools=[save_feedback],
     before_agent_callback=[callback_before_agent_log]
 )
 
 # ==========================================
-# 6. INITIALISATION & ROOT AGENT
+# 5. INITIALISATION & ROOT AGENT
 # ==========================================
 async def init_state(callback_context: CallbackContext):
-    print("\n[Init] 🟢 Initialisation du State...")
-    
+    print("\n[Init]  Initialisation du State...", flush=True)
     callback_context.state["app:restaurant_name"] = "Le Gourmet Digital"
+    
+    # MENU SYNCHRONISÉ AVEC LE CODE
     callback_context.state["app:menu_text_formatted"] = """
-    - Burger du Chef (18€)
-    - Salade Océane (14€) - Contient des Noix
-    - Pâtes aux Truffes (22€)
+    ENTRÉES:
+    - Salade César (12€)
+    - Soupe à l'oignon (10€)
+    
+    PLATS:
+    - Burger Maison (18€)
+    - Pavé de Saumon (22€)
+    - Risotto aux Champignons (19€)
+    
+    DESSERTS:
+    - Tiramisu (8€)
+    - Crème Brûlée (9€)
     """
     
-    if "user:allergies?" not in callback_context.state:
-        callback_context.state["user:allergies?"] = "Aucune" 
-    if "current_order" not in callback_context.state:
-        callback_context.state["current_order"] = []
-
-    callback_before_agent_log(callback_context)
+    if "user:allergies?" not in callback_context.state: callback_context.state["user:allergies?"] = "Aucune" 
+    if "current_order" not in callback_context.state: callback_context.state["current_order"] = []
+    
+    callback_before_agent_log(callback_context) 
 
 root_agent = Agent(
     name="root_agent",
     model=MODEL_SMART,
-    instruction="""
-    Tu es le réceptionniste.
-    - Commande / Menu / Météo -> Transfère à 'Restaurant_Pipeline'
-    - Avis -> Transfère à 'feedback_agent'
-    Utilise `transfer_to_agent`.
-    """,
+    instruction="Réceptionniste. Commande -> 'Restaurant_Pipeline'. Avis -> 'feedback_agent'.",
     sub_agents=[restaurant_pipeline, feedback_agent],
-    before_agent_callback=[init_state],
-    # 👇 LA CORRECTION EST ICI 👇
-    # On ajoute la mémoire au Root pour qu'il remplisse le panier AVANT de transférer
-    before_model_callback=[my_before_model_callback]
+    
+    before_agent_callback=[init_state, check_if_agent_should_run], 
+    before_model_callback=[simple_before_model_modifier]
 )
